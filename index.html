@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-neutral-50">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Notes</title>
+    <meta name="description" content="A simple app to capture and organize your notes" />
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+            },
+            colors: {
+              // Neutral-based palette matching the original design tokens.
+              background: '#fafafa',
+              card: '#ffffff',
+              foreground: '#1a1a1a',
+              muted: '#737373',
+              border: '#e5e5e5',
+              primary: '#1a1a1a',
+              'primary-foreground': '#fafafa',
+              destructive: '#dc2626',
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* Small spinner animation for loading states */
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .spin {
+        animation: spin 1s linear infinite;
+      }
+    </style>
+  </head>
+
+  <body class="bg-background text-foreground font-sans antialiased">
+    <div class="mx-auto w-full max-w-3xl px-4 py-10 sm:py-16">
+      <!-- Header -->
+      <header class="mb-8 flex items-center gap-3">
+        <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <!-- notebook-pen icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" />
+            <path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" />
+            <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" />
+          </svg>
+        </span>
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight text-balance">My Notes</h1>
+          <p class="text-sm text-muted">Capture quick thoughts and keep them organized.</p>
+        </div>
+      </header>
+
+      <!-- New note form -->
+      <section class="mb-10 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <form id="note-form" class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            id="note-input"
+            type="text"
+            placeholder="Write a new note..."
+            aria-label="New note"
+            autocomplete="off"
+            class="h-11 flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none transition focus:ring-2 focus:ring-neutral-300"
+          />
+          <button
+            id="save-btn"
+            type="submit"
+            disabled
+            class="flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span id="save-icon" class="flex items-center">
+              <!-- plus icon -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14" /><path d="M12 5v14" />
+              </svg>
+            </span>
+            Save
+          </button>
+        </form>
+      </section>
+
+      <!-- States: error / loading / empty / list -->
+      <div
+        id="error-state"
+        class="hidden items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-destructive"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
+        </svg>
+        <span>Could not load your notes. Please try again.</span>
+      </div>
+
+      <div id="loading-state" class="flex items-center justify-center gap-2 py-16 text-muted">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <span class="text-sm">Loading notes...</span>
+      </div>
+
+      <div id="empty-state" class="hidden rounded-xl border border-dashed border-border p-12 text-center">
+        <p class="text-sm text-muted text-pretty">No notes yet. Add your first one above to get started.</p>
+      </div>
+
+      <div id="notes-grid" class="hidden grid-cols-1 gap-4 sm:grid-cols-2"></div>
+    </div>
+
+    <script>
+      // ---------------------------------------------------------------------
+      // Config: point this at your Express server. Leave empty ("") to use the
+      // same origin that serves this page (recommended when Express serves it).
+      // ---------------------------------------------------------------------
+      const API_BASE = "";
+      const apiUrl = (path) => `${API_BASE}${path}`;
+
+      // In-memory state, mirroring the SWR cache from the React version.
+      let notes = [];
+
+      // ---- DOM references --------------------------------------------------
+      const form = document.getElementById("note-form");
+      const input = document.getElementById("note-input");
+      const saveBtn = document.getElementById("save-btn");
+      const saveIcon = document.getElementById("save-icon");
+      const grid = document.getElementById("notes-grid");
+      const errorState = document.getElementById("error-state");
+      const loadingState = document.getElementById("loading-state");
+      const emptyState = document.getElementById("empty-state");
+
+      // ---- Inline SVG icon markup (matches the lucide icons used before) ---
+      const icons = {
+        spinner: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`,
+        plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+        pencil: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`,
+        trash: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+        check: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`,
+        x: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+      };
+
+      // ---- Helpers ---------------------------------------------------------
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      async function parseJson(res) {
+        const text = await res.text();
+        if (!text) return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      }
+
+      // ---- API layer (same endpoints as the React version) ----------------
+      async function fetchNotes() {
+        const res = await fetch(apiUrl("/notes"));
+        if (!res.ok) throw new Error(`Failed to load notes (${res.status})`);
+        const data = await parseJson(res);
+        return Array.isArray(data) ? data : [];
+      }
+
+      async function createNote(note) {
+        const res = await fetch(apiUrl("/write"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note }),
+        });
+        if (!res.ok) throw new Error(`Failed to save note (${res.status})`);
+        return await parseJson(res);
+      }
+
+      async function updateNote(id, note) {
+        const res = await fetch(apiUrl(`/notes/${id}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note }),
+        });
+        if (!res.ok) throw new Error(`Failed to update note (${res.status})`);
+        return await parseJson(res);
+      }
+
+      async function deleteNote(id) {
+        const res = await fetch(apiUrl(`/notes/${id}`), { method: "DELETE" });
+        if (!res.ok) throw new Error(`Failed to delete note (${res.status})`);
+      }
+
+      // ---- Rendering -------------------------------------------------------
+      function showOnly(state) {
+        errorState.classList.add("hidden");
+        loadingState.classList.add("hidden");
+        emptyState.classList.add("hidden");
+        grid.classList.add("hidden");
+
+        if (state === "error") errorState.classList.replace("hidden", "flex");
+        else if (state === "loading") loadingState.classList.remove("hidden");
+        else if (state === "empty") emptyState.classList.remove("hidden");
+        else if (state === "grid") grid.classList.replace("hidden", "grid");
+      }
+
+      function render() {
+        if (!notes || notes.length === 0) {
+          showOnly("empty");
+          return;
+        }
+        showOnly("grid");
+        grid.innerHTML = notes.map(noteCardHtml).join("");
+      }
+
+      function noteCardHtml(note) {
+        return `
+          <div class="flex flex-col rounded-xl border border-border bg-card shadow-sm" data-id="${note.id}">
+            <div class="flex-1 p-6" data-role="body">
+              <p class="whitespace-pre-wrap text-pretty leading-relaxed text-foreground" data-role="text">${escapeHtml(note.note)}</p>
+            </div>
+            <div class="flex justify-end gap-2 p-4 pt-0" data-role="footer">
+              <button data-action="edit" class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition hover:bg-neutral-100">
+                ${icons.pencil} Edit
+              </button>
+              <button data-action="delete" class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-destructive transition hover:bg-red-50">
+                ${icons.trash} Delete
+              </button>
+            </div>
+          </div>`;
+      }
+
+      // Switch a card into edit mode (textarea + Save/Cancel).
+      function enterEditMode(card, note) {
+        const body = card.querySelector('[data-role="body"]');
+        const footer = card.querySelector('[data-role="footer"]');
+
+        body.innerHTML = `
+          <textarea data-role="draft" aria-label="Edit note"
+            class="min-h-24 w-full resize-none rounded-md border border-border bg-card p-2 text-sm outline-none transition focus:ring-2 focus:ring-neutral-300">${escapeHtml(note.note)}</textarea>`;
+        footer.innerHTML = `
+          <button data-action="cancel" class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition hover:bg-neutral-100">
+            ${icons.x} Cancel
+          </button>
+          <button data-action="save-edit" class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50">
+            ${icons.check} Save
+          </button>`;
+
+        const textarea = body.querySelector('[data-role="draft"]');
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      }
+
+      // ---- Event handling (delegated) --------------------------------------
+      function setSaving(saving) {
+        saveBtn.disabled = saving || !input.value.trim();
+        saveIcon.innerHTML = saving ? icons.spinner : icons.plus;
+      }
+
+      // Create with optimistic update + rollback on failure.
+      async function handleCreate(text) {
+        const previous = notes.slice();
+        const optimistic = { id: `temp-${Date.now()}`, note: text };
+        notes = [optimistic, ...notes];
+        render();
+
+        try {
+          const saved = await createNote(text);
+          notes = notes.map((n) => (n.id === optimistic.id ? (saved || optimistic) : n));
+          render();
+        } catch (err) {
+          console.log("[v0] create failed:", err.message);
+          notes = previous; // rollback
+          render();
+          alert("Could not save the note. Please try again.");
+        }
+      }
+
+      async function handleUpdate(id, text) {
+        const previous = notes.slice();
+        notes = notes.map((n) => (String(n.id) === String(id) ? { ...n, note: text } : n));
+        render();
+
+        try {
+          await updateNote(id, text);
+        } catch (err) {
+          console.log("[v0] update failed:", err.message);
+          notes = previous; // rollback
+          render();
+          alert("Could not update the note. Please try again.");
+        }
+      }
+
+      async function handleDelete(id) {
+        const previous = notes.slice();
+        notes = notes.filter((n) => String(n.id) !== String(id));
+        render();
+
+        try {
+          await deleteNote(id);
+        } catch (err) {
+          console.log("[v0] delete failed:", err.message);
+          notes = previous; // rollback
+          render();
+          alert("Could not delete the note. Please try again.");
+        }
+      }
+
+      // Enable/disable Save button as the user types.
+      input.addEventListener("input", () => {
+        saveBtn.disabled = !input.value.trim();
+      });
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        setSaving(true);
+        await handleCreate(text);
+        input.value = "";
+        setSaving(false);
+        saveBtn.disabled = true;
+      });
+
+      // Delegate clicks within the grid to the right card action.
+      grid.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-action]");
+        if (!btn) return;
+        const card = btn.closest("[data-id]");
+        const id = card.getAttribute("data-id");
+        const note = notes.find((n) => String(n.id) === String(id));
+        if (!note) return;
+
+        const action = btn.getAttribute("data-action");
+
+        if (action === "edit") {
+          enterEditMode(card, note);
+        } else if (action === "cancel") {
+          render();
+        } else if (action === "delete") {
+          await handleDelete(id);
+        } else if (action === "save-edit") {
+          const draft = card.querySelector('[data-role="draft"]').value.trim();
+          if (!draft) return;
+          await handleUpdate(id, draft);
+        }
+      });
+
+      // ---- Initial load ----------------------------------------------------
+      (async function init() {
+        showOnly("loading");
+        try {
+          notes = await fetchNotes();
+          render();
+        } catch (err) {
+          console.log("[v0] initial load failed:", err.message);
+          showOnly("error");
+        }
+      })();
+    </script>
+  </body>
+</html>
