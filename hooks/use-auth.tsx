@@ -33,18 +33,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // On mount, ask the backend who we are via GET /me.
   useEffect(() => {
     let active = true
-    console.log("[v0] AuthProvider effect — calling getMe()")
     getMe()
       .then((u) => {
-        console.log("[v0] getMe resolved:", u)
         if (active) setUser(u)
       })
-      .catch((e) => {
-        console.log("[v0] getMe rejected:", e?.message)
+      .catch(() => {
         if (active) setUser(null)
       })
       .finally(() => {
-        console.log("[v0] getMe finally — setting loading false")
         if (active) setLoading(false)
       })
     return () => {
