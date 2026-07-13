@@ -1,7 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import useSWR from "swr"
-import { NotebookPen, AlertCircle, Loader2 } from "lucide-react"
+import { NotebookPen, AlertCircle, Loader2, LogOut } from "lucide-react"
 import {
   type Note,
   fetchNotes,
@@ -9,16 +10,30 @@ import {
   updateNote,
   deleteNote,
 } from "@/lib/notes-api"
+import { useAuth } from "@/hooks/use-auth"
 import { NoteForm } from "@/components/note-form"
 import { NoteCard } from "@/components/note-card"
+import { Button } from "@/components/ui/button"
 
 export function NotesView() {
+  const { user, logout } = useAuth()
+  const [loggingOut, setLoggingOut] = useState(false)
   const {
     data: notes,
     error,
     isLoading,
     mutate,
   } = useSWR<Note[]>("notes", fetchNotes)
+
+  async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
+    try {
+      await logout()
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   // Create: optimistically prepend the new note, then revalidate.
   async function handleCreate(text: string) {
@@ -78,9 +93,25 @@ export function NotesView() {
             My Notes
           </h1>
           <p className="text-sm text-muted-foreground">
-            Capture quick thoughts and keep them organized.
+            {user?.username
+              ? `Signed in as ${user.username}`
+              : "Capture quick thoughts and keep them organized."}
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="ml-auto gap-1.5"
+        >
+          {loggingOut ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <LogOut className="size-4" aria-hidden="true" />
+          )}
+          Logout
+        </Button>
       </header>
 
       <section className="mb-10 rounded-xl border bg-card p-4 shadow-sm">
